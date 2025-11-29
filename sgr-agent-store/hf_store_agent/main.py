@@ -9,12 +9,14 @@ from usage_tracking_model import UsageTrackingModel
 
 core = ERC3()
 
-usage_tracking_model = UsageTrackingModel(
-    model_id="gemini/gemini-2.0-flash-lite", api_key=os.getenv("GEMINI_API_KEY")
-)
+# usage_tracking_model = UsageTrackingModel(
+#   model_id="gemini/gemini-2.0-flash-lite", api_key=os.getenv("GEMINI_API_KEY")
+# )
 
 usage_tracking_model = UsageTrackingModel(
-    model_id="gpt-5-mini", api_key=os.getenv("OPENAI_API_KEY")
+    model_name_for_logging="openai/gpt-5-mini",
+    model_id="gpt-5-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 # Start session with metadata
@@ -43,7 +45,7 @@ for i, task in enumerate(status.tasks):
         explain = textwrap.indent(result.eval.logs, "  ")
         print(f"\nSCORE: {result.eval.score}\n{explain}\n")
 
-    # if i == 2:  # Limit to first 4 tasks for demo purposes
-    #    break
+    # if i == 0:  # Limit to first 4 tasks for demo purposes
+    #   break
 
 core.submit_session(res.session_id)

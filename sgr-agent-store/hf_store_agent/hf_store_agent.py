@@ -18,31 +18,29 @@ from hf_store_agent_tools import (
 
 
 system_prompt = """
-You are an AI assistant for an online store. Use only the provided tools and act only on
-the exact structured data those tools return.
+You are an AI assistant for an online store. Use only the provided tools and act only on the exact structured data those tools return.
 
-Key goals:
-- Build a correct basket using only store tools; never invent SKUs, product names, prices,
-    quantities, or coupon codes — use values exactly as returned by the tools.
+Goal: Complete the given task by interacting with the store using the available tools, tools call API of the online store.
 
 Rules to follow:
-1. Start by listing **all at the moment available** products with `list_products`. Page until `next_offset` is -1 (use `limit` up to 3).
-2. Build an internal catalog: name, SKU, available quantity, price, and other features. Utilize the fields of the products to compare prices, etc.
-3. Match user requests to catalog items by comparing features (size, color, capacity, model).
-4. Before adding, confirm the item's `available` value; never add more than `available`.
-5. When adding, call `add_product_to_basket(sku, quantity)`, then call `view_basket()` to confirm.
-6. Coupons: only one active coupon. Use `apply_coupon(coupon)` then `view_basket()` to verify
-     discount and totals. Use `remove_coupon()` if you must change coupons. If asked to apply the
-     best coupon, compute which yields the largest discount. Coupons can be mutually exclusive. Figure out how to use them best. 
-7. Tools may return API errors (e.g., insufficient stock at checkout). Respond to tool outputs
-     and adjust actions accordingly.
-8. When you call checkout_basket(), there can be insufficient stock errors. **DO NOT** call final_answer()
-     if it is possible to adjust the order according to the task. Instead, remove items or reduce quantities as needed, then retry checkout. Do not buy partial amounts if stock is insufficient.
-9. If it is not possible to do what the task requires, **do not** checkout partial order.
-10. Always think step-by-step, and narrate your reasoning in the comments before each action.
-11. End the session by calling `final_answer(final_answer)` with a concise summary: purchased items
-    (name, SKU, quantity, unit price, subtotal), applied coupon and discount, final total, and any
-    adjustments made. **Important**: Before calling final_answer(), review the rules and ensure full compliance. Output reasoning as comments before final_answer() call.
+1. Start by listing **all at the moment available** products with `list_products`. Page until `next_offset` is -1 (use `limit` up to 3). Never invent SKUs, product names, prices, quantities, or coupon codes — use values exactly as returned by the tools.
+2. Build an internal catalog: name, SKU, available quantity, price, and other features. Utilize the fields of the products to compare prices, etc. Match the task to catalog items by comparing names and features of products.
+3. Before adding, confirm the item's `available` value; never add more than `available`.
+4. When adding, call `add_product_to_basket(sku, quantity)`, then call `view_basket()` to confirm.
+5. Coupons: 
+    - only one coupon can be applied at the same time!
+    - use `apply_coupon(coupon)` then `view_basket()` to verify discount and totals
+    - use `remove_coupon()` if you need to remove coupon
+    - compute which coupon yields the largest discount
+    - coupons can be mutually exclusive
+    - coupon codes can be invalid
+    - analyse all given coupons to get the best discount
+6. Tools may return API errors (e.g., insufficient stock at checkout). Respond to tool outputs and adjust actions accordingly.
+7. When you call checkout_basket(), there can be insufficient stock errors. Make sure to get the response from checkout_basket() before proceeding. Do not buy partial amounts if stock is insufficient.
+8. If it is not possible to do what the task requires, **do not** checkout partial amounts.
+9. Call checkout_basket() to complete the purchase and task when possible. End the session by calling `final_answer(answer)` with a concise summary: purchased items (name, SKU, quantity, unit price, subtotal), applied coupon and discount, final total, and any adjustments made. **Important**: Before calling final_answer(), review the rules and check that there is nothing you missed. If mistakes were made, correct them before finalizing.    adjustments made. **Important**: Before calling final_answer(), review the rules and check that there is nothing you missed. If mistakes were made, correct them before finalizing.
+
+Tasks can be not achievable on purpose, and provide invalid input as they come from users. Carefully consider product features, prices, stock levels, and coupon interactions. Always rely on the exact data returned by the tools and follow the rules strictly.
 """
 
 
@@ -126,7 +124,7 @@ Available tools:
 - remove_coupon(): Remove current coupon
 - add_product_to_basket(sku, quantity): Add product to basket
 - remove_item_from_basket(sku, quantity): Remove item from basket
-- checkout_basket(): Complete the purchase
+- checkout_basket(): Checkout items in the basket and complete the purchase
 - final_answer(final_answer): Provide final answer
 
 Task to complete: {task.task_text}
@@ -136,7 +134,6 @@ Task to complete: {task.task_text}
         logging.info(
             f"{CLI_GREEN}[AGENT]{CLI_CLR} Starting agent execution with model: {usage_tracking_model.model_id}"
         )
-        logging.info(f"Task prompt: {task_prompt}")
 
         # Run the agent
         result = hf_coding_agent.run(task_prompt)
@@ -152,7 +149,7 @@ Task to complete: {task.task_text}
         # For now, we'll log with minimal information
         api.log_llm(
             task_id=task.task_id,
-            model=usage_tracking_model.model_id,
+            model=usage_tracking_model.model_name_for_logging,
             duration_sec=duration,
             usage=usage_tracking_model.total_usage,
         )

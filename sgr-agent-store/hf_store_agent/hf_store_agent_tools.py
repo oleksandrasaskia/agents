@@ -180,7 +180,7 @@ class RemoveItemFromBasketTool(StoreAPITool):
 class CheckoutBasketTool(StoreAPITool):
     def __init__(self, store_api):
         self.name = "checkout_basket"
-        self.description = "Complete the checkout process for items in the basket"
+        self.description = "Complete the checkout process for items in the basket"  # 	Checkout and complete purchase
         self.inputs = {}  # No parameters required
         self.output_type = "string"
         self.store_api = store_api
@@ -197,9 +197,9 @@ class FinalAnswerTool(Tool):
 
     def __init__(self):
         self.name = "final_answer"
-        self.description = "Provide a final summary when the task is completed. Required parameter: summary (str)"
+        self.description = "Provide a final summary when the task is completed or if it is not possible to complete it after reviewing all rules and ensuring full compliance. Required parameter: answer (str)"
         self.inputs = {
-            "final_answer": {
+            "answer": {
                 "type": "string",
                 "description": "The final answer to return.",
             }
@@ -208,7 +208,7 @@ class FinalAnswerTool(Tool):
         super().__init__()
         logging.info(f"DEBUG: Initialized tool: {self.name}")
 
-    def forward(self, final_answer: str) -> str:
-        logging.info(f"{CLI_GREEN}[FINAL]{CLI_CLR} Task completed: {final_answer}")
+    def forward(self, answer: str) -> str:
+        logging.info(f"{CLI_GREEN}[FINAL]{CLI_CLR} Task completed: {answer}")
 
-        return final_answer
+        return answer

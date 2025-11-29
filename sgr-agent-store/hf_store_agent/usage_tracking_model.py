@@ -20,11 +20,16 @@ class UsageTrackingModel(LiteLLMModel):
       - keeps the original LiteLLMModel behavior intact
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, model_name_for_logging: str = None, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.total_usage = TokenUsage()
         self.last_usage = None  # usage of the most recent call
+
+        # must match slug from OpenRouter:
+        self.model_name_for_logging = model_name_for_logging or (
+            self.model_id if isinstance(self.model_id, str) else "unknown_model"
+        )
 
     def generate(self, messages, *args, **kwargs) -> ChatMessage:
         logging.info("Calling UsageTrackingModel.generate()...")
