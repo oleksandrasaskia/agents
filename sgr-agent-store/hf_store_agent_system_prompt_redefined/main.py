@@ -1,11 +1,28 @@
+# uv run main.py --model gpt-4o
+# uv run main.py --model gpt-5-mini
+# uv run main.py --model gemini
+
 import textwrap
-from openai import OpenAI
 import os
+import argparse
 
 from hf_store_agent import run_agent
 from erc3 import ERC3
 
 from usage_tracking_model import UsageTrackingModel
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(
+    description="Run the store agent with different models"
+)
+parser.add_argument(
+    "--model",
+    type=str,
+    choices=["gpt-5-mini", "gemini"],
+    default="gpt-5-mini",
+    help="Model to use: gpt-5-mini, or gemini",
+)
+args = parser.parse_args()
 
 core = ERC3()
 
@@ -19,17 +36,27 @@ core = ERC3()
 #    api_key=os.getenv("OPENAI_API_KEY"),
 # )
 
-usage_tracking_model = UsageTrackingModel(
-    model_name_for_logging="openai/gpt-4o",
-    model_id="gpt-4o",
-    api_key=os.getenv("OPENAI_API_KEY"),
-)
+# Initialize model based on argument
+if args.model == "gpt-5-mini":
+    usage_tracking_model = UsageTrackingModel(
+        model_name_for_logging="openai/gpt-5-mini",
+        model_id="gpt-5-mini",
+        api_key=os.getenv("OPENAI_API_KEY"),
+    )
+    workspace_name = "gpt-5-mini changed tools prompt"
+    agent_name = "Store Agent gpt-5-mini"
+elif args.model == "gemini":
+    usage_tracking_model = UsageTrackingModel(
+        model_id="gemini/gemini-2.0-flash-lite", api_key=os.getenv("GEMINI_API_KEY")
+    )
+    workspace_name = "gemini changed tools prompt"
+    agent_name = "Store Agent gemini"
 
 # Start session with metadata
 res = core.start_session(
     benchmark="store",
-    workspace="gpt-4o",
-    name="Store Agent gpt-4o",
+    workspace=workspace_name,
+    name=agent_name,
     architecture="Coding Agent",
 )
 
@@ -51,7 +78,5 @@ for i, task in enumerate(status.tasks):
         explain = textwrap.indent(result.eval.logs, "  ")
         print(f"\nSCORE: {result.eval.score}\n{explain}\n")
 
-    # if i == 0:  # Limit to first 4 tasks for demo purposes
-    #   break
 
 core.submit_session(res.session_id)

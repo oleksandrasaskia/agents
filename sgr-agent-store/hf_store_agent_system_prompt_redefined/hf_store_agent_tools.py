@@ -144,10 +144,13 @@ class RemoveCouponTool(StoreAPITool):
 class AddProductToBasketTool(StoreAPITool):
     def __init__(self, store_api):
         self.name = "add_product_to_basket"
-        self.description = "Add a product to the shopping basket. Required parameters: sku (str), quantity (int, default=1)"
+        self.description = "Add a product to the shopping basket. Required parameters: sku (str), quantity (int, default=1) must be positive integer"
         self.inputs = {
             "sku": {"type": "string", "description": "Product SKU to add"},
-            "quantity": {"type": "integer", "description": "Quantity to add"},
+            "quantity": {
+                "type": "integer",
+                "description": "Quantity to add, must be positive integer",
+            },
         }
         self.output_type = "string"
         self.store_api = store_api
@@ -162,10 +165,13 @@ class AddProductToBasketTool(StoreAPITool):
 class RemoveItemFromBasketTool(StoreAPITool):
     def __init__(self, store_api):
         self.name = "remove_item_from_basket"
-        self.description = "Remove an item from the shopping basket. Required parameters: sku (str), quantity (int)"
+        self.description = "Remove an item from the shopping basket. Required parameters: sku (str), quantity (int) must be positive integer"
         self.inputs = {
             "sku": {"type": "string", "description": "Product SKU to remove"},
-            "quantity": {"type": "integer", "description": "Quantity to remove"},
+            "quantity": {
+                "type": "integer",
+                "description": "Quantity to remove, must be positive integer",
+            },
         }
         self.output_type = "string"
         self.store_api = store_api

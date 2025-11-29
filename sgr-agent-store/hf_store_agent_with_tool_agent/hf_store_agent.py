@@ -1,5 +1,7 @@
 import time
 import logging
+import importlib.resources
+import yaml
 from erc3 import TaskInfo, ERC3
 from smolagents import (
     CodeAgent,
@@ -8,7 +10,6 @@ from smolagents import (
     ManagedAgentPromptTemplate,
     FinalAnswerPromptTemplate,
 )
-
 from usage_tracking_model import UsageTrackingModel
 
 from hf_store_agent_tools import (
@@ -21,6 +22,10 @@ from hf_store_agent_tools import (
     CheckoutBasketTool,
     FinalAnswerTool,
 )
+
+CLI_RED = "\x1b[31m"
+CLI_GREEN = "\x1b[32m"
+CLI_CLR = "\x1b[0m"
 
 
 system_prompt = """
@@ -49,10 +54,16 @@ Rules to follow:
 Tasks can be not achievable on purpose, and provide invalid input as they come from users. Carefully consider product features, prices, stock levels, and coupon interactions. Always rely on the exact data returned by the tools and follow the rules strictly.
 """
 
-
-CLI_RED = "\x1b[31m"
-CLI_GREEN = "\x1b[32m"
-CLI_CLR = "\x1b[0m"
+PROMPT_TEMPLATES = PromptTemplates(
+    system_prompt=system_prompt,
+    planning=PlanningPromptTemplate(
+        initial_plan="",
+        update_plan_pre_messages="",
+        update_plan_post_messages="",
+    ),
+    managed_agent=ManagedAgentPromptTemplate(task="", report=""),
+    final_answer=FinalAnswerPromptTemplate(pre_messages="", post_messages=""),
+)
 
 
 def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInfo):
@@ -117,32 +128,48 @@ def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInf
         tools=tools,
         model=usage_tracking_model,
         additional_authorized_imports=["datetime", "json"],
+        instructions=system_prompt,
+        name="OnlineStoreAPICodeAgent",
+        description="An agent that uses store API tools to complete shopping tasks.",
+    )
+
+    main_agent = CodeAgent(
+        tools=tools,
+        model=usage_tracking_model,
+        additional_authorized_imports=["datetime", "json"],
+        managed_agents=[hf_coding_agent],
+        prompt_templates=PROMPT_TEMPLATES,
+        name="MainAgentToDecideAndManageStoreAgent",
+        description="An agent that manages the coding agent to complete shopping tasks.",
     )
 
     # Prepare the task with system context
-    task_prompt = f"""
-{system_prompt}
-
-Available tools:
-- list_products(offset, limit): List products in the store
-- view_basket(): View current basket contents and totals
-- apply_coupon(coupon): Apply a discount coupon
-- remove_coupon(): Remove current coupon
-- add_product_to_basket(sku, quantity): Add product to basket
-- remove_item_from_basket(sku, quantity): Remove item from basket
-- checkout_basket(): Checkout items in the basket and complete the purchase
-- final_answer(final_answer): Provide final answer
-
-Task to complete: {task.task_text}
-"""
+    task_prompt = f"""Task to complete: {task.task_text}"""
 
     try:
         logging.info(
             f"{CLI_GREEN}[AGENT]{CLI_CLR} Starting agent execution with model: {usage_tracking_model.model_id}"
         )
 
+        print(hf_coding_agent.system_prompt)
+
+        print("****************************")
+
+        print(hf_coding_agent.tools)
+
+        print("****************************")
+
+        print(main_agent.system_prompt)
+
+        print("****************************")
+
+        print(main_agent.tools)
+
+        print("****************************")
+
         # Run the agent
-        result = hf_coding_agent.run(task_prompt)
+        # result = hf_coding_agent.run(task_prompt)
+        result = main_agent.run(task_prompt)
 
         duration = time.time() - started
         logging.info(

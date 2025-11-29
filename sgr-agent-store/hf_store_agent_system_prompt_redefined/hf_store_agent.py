@@ -1,5 +1,8 @@
 import time
 import logging
+import os
+import yaml
+from pathlib import Path
 from erc3 import TaskInfo, ERC3
 from smolagents import (
     CodeAgent,
@@ -8,7 +11,6 @@ from smolagents import (
     ManagedAgentPromptTemplate,
     FinalAnswerPromptTemplate,
 )
-
 from usage_tracking_model import UsageTrackingModel
 
 from hf_store_agent_tools import (
@@ -22,9 +24,39 @@ from hf_store_agent_tools import (
     FinalAnswerTool,
 )
 
+CLI_RED = "\x1b[31m"
+CLI_GREEN = "\x1b[32m"
+CLI_CLR = "\x1b[0m"
 
-system_prompt = """
-You are an AI assistant for an online store. Use only the provided tools and act only on the exact structured data those tools return.
+
+# Load system prompt from YAML file
+def load_system_prompt_from_yaml(yaml_filename="system_prompt_minimal.yaml"):
+    """Load system prompt from a YAML file in the same directory as this script."""
+    current_dir = Path(__file__).parent
+    yaml_path = current_dir / yaml_filename
+
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+        print(f"== Loaded system prompt from {yaml_filename}:")
+
+    return config.get("system_prompt", "")
+
+
+system_prompt = load_system_prompt_from_yaml("system_prompt_minimal_gpt5-mini.yaml")
+system_prompt = load_system_prompt_from_yaml("system_prompt_minimal_gemini.yaml")
+
+PROMPT_TEMPLATES = PromptTemplates(
+    system_prompt=system_prompt,
+    planning=PlanningPromptTemplate(
+        initial_plan="",
+        update_plan_pre_messages="",
+        update_plan_post_messages="",
+    ),
+    managed_agent=ManagedAgentPromptTemplate(task="", report=""),
+    final_answer=FinalAnswerPromptTemplate(pre_messages="", post_messages=""),
+)
+
+instructions = """
 
 Goal: Complete the given task by interacting with the store using the available tools, tools call API of the online store.
 
@@ -50,11 +82,6 @@ Tasks can be not achievable on purpose, and provide invalid input as they come f
 """
 
 
-CLI_RED = "\x1b[31m"
-CLI_GREEN = "\x1b[32m"
-CLI_CLR = "\x1b[0m"
-
-
 def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInfo):
     # Setup logging
     logging.basicConfig(
@@ -64,6 +91,9 @@ def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInf
             logging.StreamHandler(),
         ],
     )
+
+    # Enable DEBUG logging for smolagents to see full reasoning/thinking
+    logging.getLogger("smolagents").setLevel(logging.DEBUG)
 
     logging.info(f"{CLI_GREEN}[INIT]{CLI_CLR} Starting agent for task: {task.task_id}")
     logging.info(f"{CLI_GREEN}[TASK]{CLI_CLR} {task.task_text}")
@@ -117,29 +147,21 @@ def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInf
         tools=tools,
         model=usage_tracking_model,
         additional_authorized_imports=["datetime", "json"],
+        prompt_templates=PROMPT_TEMPLATES,
+        instructions=instructions,
     )
 
     # Prepare the task with system context
-    task_prompt = f"""
-{system_prompt}
-
-Available tools:
-- list_products(offset, limit): List products in the store
-- view_basket(): View current basket contents and totals
-- apply_coupon(coupon): Apply a discount coupon
-- remove_coupon(): Remove current coupon
-- add_product_to_basket(sku, quantity): Add product to basket
-- remove_item_from_basket(sku, quantity): Remove item from basket
-- checkout_basket(): Checkout items in the basket and complete the purchase
-- final_answer(final_answer): Provide final answer
-
-Task to complete: {task.task_text}
-"""
+    task_prompt = f"""Task to complete: {task.task_text}"""
 
     try:
         logging.info(
             f"{CLI_GREEN}[AGENT]{CLI_CLR} Starting agent execution with model: {usage_tracking_model.model_id}"
         )
+
+        # print(hf_coding_agent.system_prompt)
+
+        print("****************************")
 
         # Run the agent
         result = hf_coding_agent.run(task_prompt)
