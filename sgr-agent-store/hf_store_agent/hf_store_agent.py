@@ -1,4 +1,3 @@
-import os
 import time
 import logging
 from erc3 import TaskInfo, ERC3
@@ -19,12 +18,22 @@ from hf_store_agent_tools import (
 
 
 system_prompt = """
-You are a business assistant helping customers of OnlineStore.
+You are a AI assistant for an online store.
 
-- Clearly report when tasks are done.
-- If ListProducts returns non-zero "NextOffset", it means there are more products available.
-- You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
-- Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
+Rules to follow:
+- The task wording can have reformulations of the same product. Compare product features to identify the correct items.
+- The first step should always be to list products to understand what is available in the store and under which names. Names of products, their SKUs and quantity are important for adding them to the basket.
+- If the `list_products` tool returns a non-zero "NextOffset", more products are available and can be retrieved. `limit` value can be up to 3. Use this to paginate through the product catalog to retrieve all products.
+- Do not invent product SKUs or names or coupons. Always use the exact SKU and name as returned by the `list_products` tool.
+- Before adding to the basket, make sure to check product availability from the result of `list_products` tool. The field is `available`. 
+- Customers can apply coupon codes to receive discounts. Use the `view_basket` tool to check the current discount and total.
+- Only one coupon can be active at a time. Applying a new coupon will replace the current one. Coupons can also be explicitly removed.
+- When adding products to the basket, ensure to specify both the SKU and the desired quantity.
+- You can't add or checkout more than available. Some products could be purchased in the meantime by other users so you can get an error when adding to basket or when trying to check out. If so, adjust quantity accordingly.
+- wait for the response of each tool before deciding your next action. do not exit prematurely.
+
+Your goal is to complete the tasks using the available tools. Plan ahead what tools you should use in which order to achieve the task. When you get responses from the tools, analyze them carefully and decide on your next steps accordingly.
+
 """
 
 
@@ -33,7 +42,7 @@ CLI_GREEN = "\x1b[32m"
 CLI_CLR = "\x1b[0m"
 
 
-def run_agent(model: str, api: ERC3, task: TaskInfo):
+def run_agent(usage_tracking_model: UsageTrackingModel, api: ERC3, task: TaskInfo):
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
@@ -90,10 +99,6 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
 
     started = time.time()
 
-    usage_tracking_model = UsageTrackingModel(  # LiteLLMModel(
-        model_id=model, api_key=os.getenv("GEMINI_API_KEY")
-    )
-
     # Create the CodeAgent with store tools
     hf_coding_agent = CodeAgent(
         tools=tools,
@@ -105,8 +110,6 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
     task_prompt = f"""
 {system_prompt}
 
-Task to complete: {task.task_text}
-
 Available tools:
 - list_products(offset, limit): List products in the store
 - view_basket(): View current basket contents and totals
@@ -115,14 +118,15 @@ Available tools:
 - add_product_to_basket(sku, quantity): Add product to basket
 - remove_item_from_basket(sku, quantity): Remove item from basket
 - checkout_basket(): Complete the purchase
-- final_answer(final_answer): Provide final answer for the task once completed or if it is not possible to complete after all the retries
+- final_answer(final_answer): Provide final answer
+
+Task to complete: {task.task_text}
 """
 
     try:
         logging.info(
-            f"{CLI_GREEN}[AGENT]{CLI_CLR} Starting agent execution with model: {model}"
+            f"{CLI_GREEN}[AGENT]{CLI_CLR} Starting agent execution with model: {usage_tracking_model.model_id}"
         )
-        logging.info(f"Agent execution started with model: {model}")
         logging.info(f"Task prompt: {task_prompt}")
 
         # Run the agent
@@ -133,35 +137,23 @@ Available tools:
             f"{CLI_GREEN}[SUCCESS]{CLI_CLR} Agent completed task in {duration:.2f}s"
         )
         logging.info(f"{CLI_GREEN}[RESULT]{CLI_CLR} {result}")
-        logging.info(f"Agent completed successfully in {duration:.2f}s")
-        logging.info(f"Final result: {result}")
         logging.info(f"Total token usage: {usage_tracking_model.total_usage}")
 
         # Note: SmolAgents doesn't provide direct access to usage stats like OpenAI
         # For now, we'll log with minimal information
         api.log_llm(
             task_id=task.task_id,
-            model=model,
+            model=usage_tracking_model.model_id,
             duration_sec=duration,
             usage=usage_tracking_model.total_usage,
         )
-        logging.info(f"Logged LLM usage to ERC3 API")
 
     except Exception as e:
         duration = time.time() - started
         logging.info(
             f"{CLI_RED}[FAILED]{CLI_CLR} Agent failed after {duration:.2f}s: {str(e)}"
         )
-        logging.error(f"Agent failed after {duration:.2f}s: {str(e)}")
-
-        api.log_llm(
-            task_id=task.task_id,
-            model=model,
-            duration_sec=duration,
-            usage=usage_tracking_model.total_usage,
-        )
-        logging.info(f"Logged failed LLM usage to ERC3 API")
-
     finally:
-        logging.info(f"{CLI_GREEN}[CLEANUP]{CLI_CLR} Agent session ended")
-        logging.info(f"Agent session completed for task {task.task_id}")
+        logging.info(
+            f"{CLI_GREEN}[CLEANUP]{CLI_CLR} Agent session ended, task {task.task_id}"
+        )

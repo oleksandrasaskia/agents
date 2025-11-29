@@ -21,6 +21,8 @@ class StoreAPITool(Tool):
         try:
             # Create request object from kwargs
             request = self.request_class(**kwargs)
+            logging.info(f"{CLI_GREEN}[REQUEST]{CLI_CLR} {type(request)} -> {request}")
+
             if request is not None:
                 if isinstance(request, dict):
                     logging.info(
@@ -36,9 +38,15 @@ class StoreAPITool(Tool):
 
             # Handle case where API returns None
             if result is not None:
-                result_json = result.model_dump_json(
-                    exclude_none=True, exclude_unset=True
-                )
+                # Handle both Pydantic models and plain dicts
+                if isinstance(result, dict):
+                    import json
+
+                    result_json = json.dumps(result)
+                else:
+                    result_json = result.model_dump_json(
+                        exclude_none=True, exclude_unset=True
+                    )
 
                 logging.info(
                     f"{CLI_GREEN}[RESULT]{CLI_CLR} {self.name} -> {result_json}"

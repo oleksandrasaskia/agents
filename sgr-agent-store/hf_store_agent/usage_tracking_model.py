@@ -1,6 +1,15 @@
 from smolagents import LiteLLMModel
 from smolagents.models import ChatMessage
+from pydantic import BaseModel
 import logging
+
+
+class TokenUsage(BaseModel):
+    """Pydantic model for token usage tracking (OpenAI-compatible format)"""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class UsageTrackingModel(LiteLLMModel):
@@ -14,10 +23,7 @@ class UsageTrackingModel(LiteLLMModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.total_usage = {
-            "input_tokens": 0,
-            "output_tokens": 0,
-        }
+        self.total_usage = TokenUsage()
         self.last_usage = None  # usage of the most recent call
 
     def generate(self, messages, *args, **kwargs) -> ChatMessage:
@@ -27,18 +33,22 @@ class UsageTrackingModel(LiteLLMModel):
 
         # Extract token_usage from the ChatMessage (smolagents format)
         if response.token_usage:
-            usage = {
-                "input_tokens": response.token_usage.input_tokens,
-                "output_tokens": response.token_usage.output_tokens,
-            }
+            prompt_tokens = response.token_usage.input_tokens
+            completion_tokens = response.token_usage.output_tokens
+            usage = TokenUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            )
             logging.info(f"LLM Call Usage: {usage}")
 
             # Store last usage
             self.last_usage = usage
 
             # Update aggregated totals
-            self.total_usage["input_tokens"] += usage.get("input_tokens", 0)
-            self.total_usage["output_tokens"] += usage.get("output_tokens", 0)
+            self.total_usage.prompt_tokens += usage.prompt_tokens
+            self.total_usage.completion_tokens += usage.completion_tokens
+            self.total_usage.total_tokens += usage.total_tokens
         else:
             logging.warning("No token_usage in response")
 
