@@ -42,6 +42,8 @@ for i, task in enumerate(status.tasks):
     if result.eval:
         explain = textwrap.indent(result.eval.logs, "  ")
         print(f"\nSCORE: {result.eval.score}\n{explain}\n")
-    break
+
+    if i == 2:  # Limit to first 4 tasks for demo purposes
+        break
 
 core.submit_session(res.session_id)
