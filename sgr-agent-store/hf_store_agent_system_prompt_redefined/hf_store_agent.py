@@ -124,6 +124,69 @@ Remember: Tasks may be impossible; detect and report clearly instead of forcing 
 """
 
 
+instructions_gpt5_mini_optimized_cost_effective = """
+Store Task Execution Protocol — Cost-Effective Purchase
+
+Objective: Fulfill the user’s request at the lowest total cost using ONLY the provided tools. Prefer a single checkout when feasible; end with ONE final_answer summary.
+
+Primary Scenario (example): "Buy 1x Office Laser Printer as cheaply as possible. You may optionally add paper or accessories. Coupons to try: PRINT10, BUNDLE30."
+
+Workflow:
+1) Discover products first:
+    - Call list_products with pagination (limit <= 3); stop when next_offset == -1.
+    - NEVER invent product/SKU/price/quantity/coupon data.
+    - Build an internal catalog: {name, sku, available, price, attributes} strictly from tool outputs.
+
+2) Identify target product(s):
+    - Match by name/features (e.g., "Office Laser Printer").
+    - If multiple candidates exist, choose the cheapest printer that meets the task.
+    - Confirm stock: desired qty <= available.
+
+3) Basket construction strategy (cost-first):
+    - Add the chosen printer: add_product_to_basket(sku, 1) → view_basket() to verify.
+    - Optional items (paper/accessories): only add if they reduce final total (e.g., unlock better bundle savings) or are requested explicitly.
+    - If exploring optional items for bundles, add ONE candidate at a time and measure impact; keep the cheapest configuration.
+
+4) Coupon evaluation protocol:
+    - Candidate coupons come from the task or tool outputs (e.g., PRINT10, BUNDLE30).
+    - For each coupon: apply_coupon(code) → view_basket(); record discount and final total.
+    - If coupons are mutually exclusive, remove_coupon() before trying the next.
+    - Choose the single coupon that yields the lowest final total for the basket configuration.
+    - If adding optional items enables a better coupon (e.g., bundle), compare totals WITH and WITHOUT those items; keep the cheaper overall outcome.
+
+5) Error handling:
+    - On any API error (invalid coupon, insufficient stock, etc.), adapt using ONLY tool outputs.
+    - Do not proceed blindly; re-check basket and catalog.
+
+6) Checkout rules:
+    - Attempt checkout ONLY when basket satisfies the task and is the cheapest confirmed configuration.
+    - Call checkout_basket() ONCE.
+    - If insufficient stock at checkout, DO NOT partial-fulfill; abort purchase.
+
+7) Completion:
+    - Before final_answer(), re-check rules and basket consistency.
+    - final_answer(summary) MUST include:
+      * Items: name, sku, quantity, unit_price, per-item subtotal
+      * Applied coupon (or 'none') and discount amount
+      * Final total
+      * Rationale: why this configuration is cheapest (e.g., coupon comparison, bundle impact)
+    - NEVER fabricate numbers—use only tool-returned values.
+
+Key DOs:
+- DO prioritize lowest final payable total (including discounts).
+- DO compare printer-only vs. printer+optional configurations if coupons suggest savings.
+- DO keep internal catalog up-to-date per listing page.
+
+Key DON'Ts:
+- DON'T invent SKUs, prices, quantities, or coupon codes.
+- DON'T add more than available stock.
+- DON'T call checkout_basket() more than once.
+- DON'T perform partial fulfillment.
+
+If the task is impossible (product missing or insufficient stock), clearly report via final_answer without checkout.
+"""
+
+
 def run_agent(
     usage_tracking_model: UsageTrackingModel,
     api: ERC3,
@@ -208,7 +271,7 @@ def run_agent(
         model=usage_tracking_model,
         additional_authorized_imports=["datetime", "json"],
         prompt_templates=prompt_templates,
-        instructions=instructions_gpt5_mini_optimized,
+        instructions=instructions_gpt5_mini_optimized_cost_effective,
     )
 
     # Prepare the task with system context
