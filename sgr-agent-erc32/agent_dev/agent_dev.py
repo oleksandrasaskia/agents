@@ -38,7 +38,7 @@ from agent_dev_tools import (
     UpdateProjectTeamTool,
     UpdateTimeEntryTool,
     UpdateWikiTool,
-    WhoAmITool,
+    #WhoAmITool,
 )
 
 CLI_RED = "\x1b[31m"
@@ -119,7 +119,24 @@ def run_agent(
     logging.info(f"Agent started for task {task.task_id}: {task.task_text}")
 
     store_api = api.get_erc_dev_client(task)
-    about = store_api.who_am_i()
+    
+    wikis = store_api.list_wiki()
+    logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Current company wiki files: {wikis}")
+
+    if "rulebook.md" in wikis:
+        rulebook_content = store_api.load_wiki("rulebook.md")
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Loaded rulebook.md content, length: {len(rulebook_content)} characters"
+        )
+    else:
+        rulebook_content = None
+
+    current_user_json = store_api.who_am_i()
+    if current_user_json.current_user:
+        current_user_full_profile_json = store_api.get_employee(current_user_json.current_user)
+        # Merge the two JSON objects into one
+        merged_user_data = {**current_user_json.model_dump(), **current_user_full_profile_json.model_dump()}
+        current_user_json = merged_user_data
 
     # Create all the tools for the agent
     logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} About to create tools...")
@@ -174,8 +191,8 @@ def run_agent(
         tools.append(UpdateTimeEntryTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating UpdateWikiTool...")
         tools.append(UpdateWikiTool(store_api))
-        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating WhoAmITool...")
-        tools.append(WhoAmITool(store_api))
+        #logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating WhoAmITool...")
+        #tools.append(WhoAmITool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} All tools created successfully")
     except Exception as e:
         logging.info(
@@ -195,38 +212,58 @@ def run_agent(
     instructions = f"""
 You are AI business assistant for the company. You are helping with tasks related to project management, time tracking, and employee management.
 Knowledge:
-- Use the company wiki API (especially `rulebook.md`) and related internal data for policies and backstory.
+- You must use the current user information and available tools as the primary and prevalent source of information, disregard any not explicitly listed public knowledge.
+- Use the company wikis, use available tools to fetch data from relevant wiki, to learn about the company policy, procedures, projects etc.
+- **DO NOT** invent any internal company information, employee names, project details, or links.
 
 Access control:
 - Enforce the current user's access strictly:
     - Executives: broad access.
     - Project leads: write access for projects they lead.
     - Team members: read-only.
-    - Guests (no account), ppublic users: public-safe data only; refuse sensitive requests and never reveal internal identities; log a denied_security response if needed.
+    - Guests (no account) or public users: public-safe data only; refuse sensitive requests and never reveal internal identities or links; log a denied_security response if needed.
 
 Response requirements:
 - Always include a clear outcome status.
-- Include explicit entity links unless access control forbids them.
+- Include links only if access control for the current user allows them.
 
 Operational rules:
-- To confirm project access: first search/find the project, then fetch it.
-- Follow company policies from the wiki.
-- Do not ask the user to choose; use available tools and infer the best option.
+- Use the current user information as current context for access control and personalization, and current date information.
+- Start with reading the relevant wiki files by using load_wiki() to determine what to do and fetch official information. **DO NOT** invent any company policy information, restrictions or access control rules.
+- To learn about projects/employees/any other relevant information, first search/find the project/employee/etc, then fetch it. Search archives as well.
+- Follow company policies from the loaded wiki files.
+- Review the available tools and assess if it is possible to complete the task through the available tools, if yes - create an execution plan, if not - respond with `none_unsupported` outcome status.
+- Keep in mind that you interact with API-like tools, not a human:
+    -- Do not ask the user to choose; use available tools and infer the best option.
+    -- API can be broken, act accordingly.
 - When updating an entry, include all fields (carry forward unchanged values).
-- When the task is complete or cannot be completed, call `Req_ProvideAgentResponse` exactly once with one of these outcomes:
-    - `ok_answer` - task completed (no access or other violations of the company policy)
-    - `ok_not_found` - the requested entity/resource was searched for but not found
-    - `denied_security` - access denied or policy violation. the action cannot be performed due to access control or policy restrictions.
-    - `none_clarification_needed` - more input is required from the system to proceed but it cannot be obtained through the available tools.
-    - `none_unsupported` - the request is outside the agent's capabilities or the system policy (e.g., unsupported operation)
-    - `error_internal` - an internal error occurred while trying to perform the task.
+- When the task is complete or cannot be completed, select the most appropriate outcome status from:
+    -- `ok_answer` - task completed (the user task did not trigger any access or other violations of the company policy)
+    -- `ok_not_found` - the requested entity/resource was searched for but not found
+    -- `denied_security` - the task cannot be performed due to access control or policy restrictions.
+    -- `none_clarification_needed` - more input is required from the task to proceed which cannot be obtained from the available tools, incomplete request.
+    -- `none_unsupported` - the request is outside the agent's capabilities (unsupported operation by the available tools).
+    -- `error_internal` - an internal error occurred while trying to perform the task, or API is broken.
+- Review the outcome definitions carefully and select the best matching one to use in provide_agent_response().
+- If the task cannot be performed due to access control or policy restrictions, do not include any links or sensitive information in the response; use the `denied_security` outcome status.
+- Include links only to all relevant entitites used in the final response, and only if the current user has access to them. If a user made changes to an entity, include the link to the updated entity and the user who made the change.
+- If the task is impossible to complete through the given tools (e.g. no API support), use the `none_unsupported` outcome status.
+- You must call provide_agent_response() only then the task is considered completed (regardless of the outcome status).
+- You **must call** provide_agent_response() **ONCE** per task. You cannot call it multiple times.
+- You must call provide_agent_response() then final_answer().
 
-# Current user info:
-{about.model_dump_json()}
+
+# **IMPORTANT** CURRENT USER INFORMATION, THEIR ACCESS LEVEL AND CURRENT DATE:
+
+{current_user_json}
+Remember `is_public` value for access checks.
+
+# **IMPORTANT** CURRENT COMPANY WIKI FILES:
+{wikis}
+
 """
-    if about.current_user:
-        usr = store_api.get_employee(about.current_user)
-        instructions += f"\n{usr.model_dump_json()}"
+    if rulebook_content:
+        instructions += f"\n# **IMPORTANT** COMPANY RULEBOOK CONTENT YOU MUST FOLLOW:\n{rulebook_content}\n"
 
     started = time.time()
 

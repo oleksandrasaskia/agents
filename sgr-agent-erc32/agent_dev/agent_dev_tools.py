@@ -132,7 +132,7 @@ class ListProjectsTool(StoreAPITool):
         self.description = "List projects in the system. Required parameters: offset (int), limit (int)"
         self.inputs = {
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"}
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"}
         }
         self.output_type = "string"
         self.store_api = store_api
@@ -168,7 +168,7 @@ class ListCustomersTool(StoreAPITool):
         self.description = "List customers in the system. Required parameters: offset (int), limit (int)"
         self.inputs = {
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"}
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"}
         }
         self.output_type = "string"
         self.store_api = store_api
@@ -255,7 +255,7 @@ class SearchProjectsTool(StoreAPITool):
         self.inputs = {
             "query": {"type": "string", "description": "Optional search query for project name or description", "nullable": True},
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"},
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"},
             "customer_id": {"type": "string", "description": "Optional filter by customer ID", "nullable": True},
             "status": {"type": "array", "description": "Optional filter by status list (DealPhase): 'idea', 'exploring', 'active', 'paused', 'archived'", "nullable": True},
             "team": {"type": "object", "description": "Optional team filter (ProjectTeamFilter) with properties: employee_id (str), role (TeamRole: 'Lead', 'Engineer', 'Designer', 'QA', 'Ops', 'Other'), min_time_slice (float)", "nullable": True},
@@ -278,7 +278,7 @@ class SearchEmployeesTool(StoreAPITool):
         self.inputs = {
             "query": {"type": "string", "description": "Optional search query for employee name or email", "nullable": True},
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"},
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"},
             "location": {"type": "string", "description": "Optional filter by location", "nullable": True},
             "department": {"type": "string", "description": "Optional filter by department", "nullable": True},
             "manager": {"type": "string", "description": "Optional filter by manager", "nullable": True},
@@ -335,7 +335,7 @@ class SearchTimeEntriesTool(StoreAPITool):
             "billable": {"type": "string", "description": "Optional filter (BillableFilter): '', 'billable', 'non_billable'", "nullable": True},
             "status": {"type": "string", "description": "Optional filter by status (TimeEntryStatus): '', 'draft', 'submitted', 'approved', 'invoiced', 'voided'", "nullable": True},
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"}
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"}
         }
         self.output_type = "string"
         self.store_api = store_api
@@ -357,7 +357,7 @@ class SearchCustomersTool(StoreAPITool):
             "account_managers": {"type": "array", "description": "Optional filter by account manager IDs", "nullable": True},
             "locations": {"type": "array", "description": "Optional filter by locations", "nullable": True},
             "offset": {"type": "integer", "description": "Pagination offset"},
-            "limit": {"type": "integer", "description": "Maximum number of results to return"}
+            "limit": {"type": "integer", "description": "Maximum number of results to return, max value = 5"}
         }
         self.output_type = "string"
         self.store_api = store_api

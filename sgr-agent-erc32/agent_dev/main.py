@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--model",
     type=str,
-    choices=["gpt-5-mini"],
+    choices=["gpt-5-mini", "gpt-5"],
     default="gpt-5-mini",
     help="Model to use: gpt-5-minii",
 )
@@ -40,6 +40,13 @@ if args.model == "gpt-5-mini":
         api_key=os.getenv("OPENAI_API_KEY"),
     )
     agent_name = "gpt-5-mini"
+elif args.model == "gpt-5":
+    usage_tracking_model = UsageTrackingModel(
+        model_name_for_logging="openai/gpt-5",
+        model_id="gpt-5",
+        api_key=os.getenv("OPENAI_API_KEY"),
+    )
+    agent_name = "gpt-5"
 
 # Set workspace name including yaml filename
 yaml_filename = args.yaml
@@ -73,8 +80,6 @@ for i, task in enumerate(status.tasks):
         explain = textwrap.indent(result.eval.logs, "  ")
         print(f"\nSCORE: {result.eval.score}\n{explain}\n")
     
-    if i == 1:
-        break
 
 
 core.submit_session(res.session_id)
