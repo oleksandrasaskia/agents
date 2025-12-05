@@ -38,7 +38,7 @@ from agent_dev_tools import (
     UpdateProjectTeamTool,
     UpdateTimeEntryTool,
     UpdateWikiTool,
-    #WhoAmITool,
+    WhoAmITool,
 )
 
 CLI_RED = "\x1b[31m"
@@ -86,20 +86,18 @@ def run_agent(
 
     # Setup logging with both file and console output
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    log_filename = (
-        f"logs/{timestamp}/agent_run_{workspace_name}_{task.task_id}.log"
-    )
+    log_filename = f"logs/{timestamp}/agent_run_{workspace_name}_{task.task_id}.log"
     # Ensure the log directory exists before configuring logging
     log_dir = os.path.dirname(log_filename)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
-    
+
     # Remove existing handlers to ensure fresh logging setup for each task
     logger = logging.getLogger()
     for handler in logger.handlers[:]:
         handler.close()
         logger.removeHandler(handler)
-    
+
     # Configure fresh logging for this task
     logging.basicConfig(
         level=logging.INFO,
@@ -119,7 +117,7 @@ def run_agent(
     logging.info(f"Agent started for task {task.task_id}: {task.task_text}")
 
     store_api = api.get_erc_dev_client(task)
-    
+
     wikis = store_api.list_wiki()
     logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Current company wiki files: {wikis}")
 
@@ -133,9 +131,14 @@ def run_agent(
 
     current_user_json = store_api.who_am_i()
     if current_user_json.current_user:
-        current_user_full_profile_json = store_api.get_employee(current_user_json.current_user)
+        current_user_full_profile_json = store_api.get_employee(
+            current_user_json.current_user
+        )
         # Merge the two JSON objects into one
-        merged_user_data = {**current_user_json.model_dump(), **current_user_full_profile_json.model_dump()}
+        merged_user_data = {
+            **current_user_json.model_dump(),
+            **current_user_full_profile_json.model_dump(),
+        }
         current_user_json = merged_user_data
 
     # Create all the tools for the agent
@@ -165,7 +168,9 @@ def run_agent(
         tools.append(LoadWikiTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating LogTimeEntryTool...")
         tools.append(LogTimeEntryTool(store_api))
-        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ProvideAgentResponseTool...")
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ProvideAgentResponseTool..."
+        )
         tools.append(ProvideAgentResponseTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating SearchCustomersTool...")
         tools.append(SearchCustomersTool(store_api))
@@ -177,9 +182,13 @@ def run_agent(
         tools.append(SearchTimeEntriesTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating SearchWikiTool...")
         tools.append(SearchWikiTool(store_api))
-        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating TimeSummaryByEmployeeTool...")
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating TimeSummaryByEmployeeTool..."
+        )
         tools.append(TimeSummaryByEmployeeTool(store_api))
-        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating TimeSummaryByProjectTool...")
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating TimeSummaryByProjectTool..."
+        )
         tools.append(TimeSummaryByProjectTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating UpdateEmployeeInfoTool...")
         tools.append(UpdateEmployeeInfoTool(store_api))
@@ -191,8 +200,8 @@ def run_agent(
         tools.append(UpdateTimeEntryTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating UpdateWikiTool...")
         tools.append(UpdateWikiTool(store_api))
-        #logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating WhoAmITool...")
-        #tools.append(WhoAmITool(store_api))
+        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating WhoAmITool...")
+        tools.append(WhoAmITool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} All tools created successfully")
     except Exception as e:
         logging.info(
@@ -249,7 +258,7 @@ Operational rules:
 - Include links only to all relevant entitites used in the final response, and only if the current user has access to them. If a user made changes to an entity, include the link to the updated entity and the user who made the change.
 - If the task is impossible to complete through the given tools (e.g. no API support), use the `none_unsupported` outcome status.
 - You must call provide_agent_response() only then the task is considered completed (regardless of the outcome status).
-- You **must call** provide_agent_response() **ONCE** per task. You cannot call it multiple times.
+- You **must call** provide_agent_response() **EXACTLY ONCE** per task. You cannot call it multiple times.
 - You must call provide_agent_response() then final_answer().
 
 
@@ -271,9 +280,10 @@ Remember `is_public` value for access checks.
     hf_coding_agent = CodeAgent(
         tools=tools,
         model=usage_tracking_model,
-        additional_authorized_imports=["datetime", "json"],
+        additional_authorized_imports=["datetime", "json", "duckdb"],
         prompt_templates=prompt_templates,
         instructions=instructions,
+        max_steps=50,
     )
 
     # Prepare the task with system context

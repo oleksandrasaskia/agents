@@ -25,8 +25,8 @@ parser.add_argument(
 parser.add_argument(
     "--yaml",
     type=str,
-    default="system_prompt_minimal.yaml",
-    help="YAML file name for system prompt (e.g., system_prompt_minimal.yaml)",
+    default="system_prompt.yaml",
+    help="YAML file name for system prompt (e.g., system_prompt.yaml)",
 )
 args = parser.parse_args()
 
@@ -50,7 +50,7 @@ elif args.model == "gpt-5":
 
 # Set workspace name including yaml filename
 yaml_filename = args.yaml
-workspace_name = f"{args.model} - {yaml_filename}"
+workspace_name = f"{args.model}"
 
 # Start session with metadata
 res = core.start_session(
@@ -64,7 +64,7 @@ status = core.session_status(res.session_id)
 print(f"Session has {len(status.tasks)} tasks")
 
 for i, task in enumerate(status.tasks):
-    #if i == 0:
+    # if i == 0:
     #   continue
     print("=" * 40)
     print(f"Starting Task {i}: {task.task_id} ({task.spec_id}): {task.task_text}")
@@ -79,7 +79,6 @@ for i, task in enumerate(status.tasks):
     if result.eval:
         explain = textwrap.indent(result.eval.logs, "  ")
         print(f"\nSCORE: {result.eval.score}\n{explain}\n")
-    
 
 
 core.submit_session(res.session_id)
