@@ -54,7 +54,7 @@ workspace_name = f"{args.model}"
 
 # Start session with metadata
 res = core.start_session(
-    benchmark="erc3-dev",
+    benchmark="erc3-test",  # "erc3-dev",
     workspace=workspace_name,
     name=agent_name,
     architecture="Coding Agent",

@@ -1,82 +1,15 @@
 import logging
-import uuid
-import time
 import json
-import os
-import re
-from datetime import datetime, timedelta
-from erc3 import erc3 as dev, store, ApiException
+from pathlib import Path
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
+from erc3 import erc3 as dev, ApiException, Erc3Client
+from erc3.erc3 import ProjectDetail
 from smolagents import Tool
 
 CLI_RED = "\x1b[31m"
 CLI_GREEN = "\x1b[32m"
 CLI_CLR = "\x1b[0m"
-
-
-def normalize_name(name: str) -> str:
-    """Normalize names for fuzzy matching: lowercase, normalize diacritics (ä->ae, ö->oe, etc)."""
-    if not name:
-        return ""
-    # Common diacritic mappings
-    replacements = {
-        "ä": "ae",
-        "ö": "oe",
-        "ü": "ue",
-        "ß": "ss",
-        "Ä": "Ae",
-        "Ö": "Oe",
-        "Ü": "Ue",
-        "à": "a",
-        "á": "a",
-        "â": "a",
-        "ã": "a",
-        "å": "a",
-        "è": "e",
-        "é": "e",
-        "ê": "e",
-        "ë": "e",
-        "ì": "i",
-        "í": "i",
-        "î": "i",
-        "ï": "i",
-        "ò": "o",
-        "ó": "o",
-        "ô": "o",
-        "õ": "o",
-        "ù": "u",
-        "ú": "u",
-        "û": "u",
-    }
-    result = name
-    for orig, repl in replacements.items():
-        result = result.replace(orig, repl)
-    return result.lower().strip()
-
-
-def validate_date(date_str: str) -> tuple[bool, str]:
-    """Validate date string in YYYY-MM-DD format. Returns (is_valid, normalized_date_or_error)."""
-    if not date_str:
-        return False, "Date is required"
-    try:
-        # Try parsing the date
-        parsed = datetime.strptime(date_str, "%Y-%m-%d")
-        return True, parsed.strftime("%Y-%m-%d")
-    except ValueError:
-        return False, f"Invalid date format: {date_str}. Expected YYYY-MM-DD"
-
-
-def safe_json_serialize(obj) -> str:
-    """Safely serialize objects to JSON, handling Pydantic models and complex types."""
-    try:
-        if hasattr(obj, "model_dump"):
-            return json.dumps(obj.model_dump(), default=str, ensure_ascii=False)
-        elif hasattr(obj, "dict"):
-            return json.dumps(obj.dict(), default=str, ensure_ascii=False)
-        else:
-            return json.dumps(obj, default=str, ensure_ascii=False)
-    except Exception as e:
-        logging.exception("JSON serialization failed")
-        return json.dumps({"error": f"serialization failed: {str(e)}"})
 
 
 functions = [
@@ -1078,6 +1011,196 @@ class WhoAmITool(StoreAPITool):
 
     def forward(self) -> str:
         return self._execute_api_call()
+
+
+class DeleteWikiPageTool(StoreAPITool):
+    def __init__(self, store_api):
+        self.name = "delete_wiki_page"
+        self.description = "Delete a wiki page by setting its content to empty. Required parameter: file (str). Optional: changed_by (str)"
+        self.inputs = {
+            "file": {
+                "type": "string",
+                "description": "Path to the wiki file to delete",
+            },
+            "changed_by": {
+                "type": "string",
+                "description": "Optional ID of employee making the change",
+                "nullable": True,
+            },
+        }
+        self.output_type = "string"
+        self.store_api = store_api
+        self.request_class = dev.Req_UpdateWiki
+        super().__init__()
+        logging.info(f"DEBUG: Initialized tool: {self.name}")
+
+    def forward(self, file: str, changed_by: str = None) -> str:
+        # Delete by setting content to empty string
+        return self._execute_api_call(file=file, content="", changed_by=changed_by)
+
+
+class ListAllProjectsForUserTool(StoreAPITool):
+    def __init__(self, store_api):
+        self.name = "list_all_projects_for_user"
+        self.description = "List all projects for a specific user, separated by lead and member roles. Required parameter: user (str)"
+        self.inputs = {
+            "user": {
+                "type": "string",
+                "description": "ID of the employee to get projects for",
+            },
+        }
+        self.output_type = "string"
+        self.store_api = store_api
+        self.request_class = dev.Req_SearchProjects
+        super().__init__()
+        logging.info(f"DEBUG: Initialized tool: {self.name}")
+
+    def forward(self, user: str) -> str:
+        """List all projects for a user, separated by lead and member roles"""
+        logging.info(f"{CLI_GREEN}[TOOL]{CLI_CLR} {self.name} called with user: {user}")
+
+        try:
+            page_limit = 32
+            next_offset = 0
+            lead_in = []
+            member_of = []
+
+            while True:
+                try:
+                    # Search for projects where user is a team member
+                    request = dev.Req_SearchProjects(
+                        offset=next_offset,
+                        limit=page_limit,
+                        include_archived=True,
+                        team={"employee_id": user},
+                    )
+                    result = self.store_api.dispatch(request)
+
+                    # Get full project details and categorize by role
+                    for p in result.projects or []:
+                        detail_request = dev.Req_GetProject(id=p.id)
+                        detail_result = self.store_api.dispatch(detail_request)
+                        detail = detail_result.project
+
+                        # Find user's role in the project
+                        user_team_members = [
+                            t for t in detail.team if t.employee == user
+                        ]
+                        if user_team_members:
+                            role = user_team_members[0].role
+                            if role == "Lead":
+                                lead_in.append(detail)
+                            else:
+                                member_of.append(detail)
+
+                    next_offset = result.next_offset
+                    if next_offset == -1:
+                        # Format response as JSON
+                        import json
+
+                        response = {
+                            "lead_in": [
+                                p.model_dump(exclude_none=True) for p in lead_in
+                            ],
+                            "member_of": [
+                                p.model_dump(exclude_none=True) for p in member_of
+                            ],
+                        }
+                        result_json = json.dumps(response)
+                        logging.info(
+                            f"{CLI_GREEN}[RESULT]{CLI_CLR} {self.name} -> Found {len(lead_in)} lead projects, {len(member_of)} member projects"
+                        )
+                        return result_json
+
+                except ApiException as e:
+                    if "page limit exceeded" in str(e.api_error.error):
+                        page_limit = page_limit // 2
+                        if page_limit <= 2:
+                            raise
+                    else:
+                        raise
+
+        except ApiException as e:
+            error_msg = f"API Error: {e.api_error.error}"
+            logging.info(f"{CLI_RED}[ERROR]{CLI_CLR} {self.name} -> {error_msg}")
+            return error_msg
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            logging.info(f"{CLI_RED}[ERROR]{CLI_CLR} {self.name} -> {error_msg}")
+            return error_msg
+
+
+class ListAllCustomersForUserTool(StoreAPITool):
+    def __init__(self, store_api):
+        self.name = "list_all_customers_for_user"
+        self.description = "List all customers managed by a specific user. Required parameter: user (str)"
+        self.inputs = {
+            "user": {
+                "type": "string",
+                "description": "ID of the employee to get customers for",
+            },
+        }
+        self.output_type = "string"
+        self.store_api = store_api
+        self.request_class = dev.Req_SearchCustomers
+        super().__init__()
+        logging.info(f"DEBUG: Initialized tool: {self.name}")
+
+    def forward(self, user: str) -> str:
+        """List all customers managed by a user"""
+        logging.info(f"{CLI_GREEN}[TOOL]{CLI_CLR} {self.name} called with user: {user}")
+
+        try:
+            page_limit = 32
+            next_offset = 0
+            loaded = []
+
+            while True:
+                try:
+                    # Search for customers with this user as account manager
+                    request = dev.Req_SearchCustomers(
+                        offset=next_offset, limit=page_limit, account_managers=[user]
+                    )
+                    result = self.store_api.dispatch(request)
+
+                    # Get full customer details
+                    for p in result.companies or []:
+                        detail_request = dev.Req_GetCustomer(id=p.id)
+                        detail_result = self.store_api.dispatch(detail_request)
+                        loaded.append(detail_result.company)
+
+                    next_offset = result.next_offset
+                    if next_offset == -1:
+                        # Format response as JSON
+                        import json
+
+                        response = {
+                            "customers": [
+                                c.model_dump(exclude_none=True) for c in loaded
+                            ]
+                        }
+                        result_json = json.dumps(response)
+                        logging.info(
+                            f"{CLI_GREEN}[RESULT]{CLI_CLR} {self.name} -> Found {len(loaded)} customers"
+                        )
+                        return result_json
+
+                except ApiException as e:
+                    if "page limit exceeded" in str(e.api_error.error):
+                        page_limit = page_limit // 2
+                        if page_limit <= 2:
+                            raise
+                    else:
+                        raise
+
+        except ApiException as e:
+            error_msg = f"API Error: {e.api_error.error}"
+            logging.info(f"{CLI_RED}[ERROR]{CLI_CLR} {self.name} -> {error_msg}")
+            return error_msg
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            logging.info(f"{CLI_RED}[ERROR]{CLI_CLR} {self.name} -> {error_msg}")
+            return error_msg
 
 
 class FinalAnswerTool(Tool):

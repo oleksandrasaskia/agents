@@ -14,11 +14,14 @@ from smolagents import (
 from usage_tracking_model import UsageTrackingModel
 
 from agent_dev_tools import (
+    DeleteWikiPageTool,
     FinalAnswerTool,
     GetCustomerTool,
     GetEmployeeTool,
     GetProjectTool,
     GetTimeEntryTool,
+    ListAllCustomersForUserTool,
+    ListAllProjectsForUserTool,
     ListCustomersTool,
     ListEmployeesTool,
     ListProjectsTool,
@@ -116,7 +119,8 @@ def run_agent(
     logging.info(f"{CLI_GREEN}[TASK]{CLI_CLR} {task.task_text}")
     logging.info(f"Agent started for task {task.task_id}: {task.task_text}")
 
-    store_api = api.get_erc_dev_client(task)
+    # store_api = api.get_erc_dev_client(task)
+    store_api = api.get_erc_client(task)
 
     wikis = store_api.list_wiki()
     logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Current company wiki files: {wikis}")
@@ -148,6 +152,8 @@ def run_agent(
     try:
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating FinalAnswerTool...")
         tools.append(FinalAnswerTool())
+        logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating DeleteWikiPageTool...")
+        tools.append(DeleteWikiPageTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating GetCustomerTool...")
         tools.append(GetCustomerTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating GetEmployeeTool...")
@@ -156,6 +162,14 @@ def run_agent(
         tools.append(GetProjectTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating GetTimeEntryTool...")
         tools.append(GetTimeEntryTool(store_api))
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ListAllCustomersForUserTool..."
+        )
+        tools.append(ListAllCustomersForUserTool(store_api))
+        logging.info(
+            f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ListAllProjectsForUserTool..."
+        )
+        tools.append(ListAllProjectsForUserTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ListCustomersTool...")
         tools.append(ListCustomersTool(store_api))
         logging.info(f"{CLI_GREEN}[DEBUG]{CLI_CLR} Creating ListEmployeesTool...")
